@@ -55,6 +55,7 @@ import org.deeplearning4j.nn.conf.MultiLayerConfiguration;
 import org.deeplearning4j.nn.conf.NeuralNetConfiguration;
 import org.deeplearning4j.nn.conf.layers.DenseLayer;
 import org.deeplearning4j.nn.conf.layers.OutputLayer;
+import org.deeplearning4j.nn.graph.ComputationGraph;
 import org.deeplearning4j.nn.multilayer.MultiLayerNetwork;
 import org.deeplearning4j.nn.weights.WeightInit;
 import org.deeplearning4j.optimize.listeners.ScoreIterationListener;
@@ -144,13 +145,13 @@ public class EnergyEfficiency {
          * Step 4: Perform shuffling of dataset with seed number provided
          * Do keep in mind that there are 2 targets for this regression problem
          */
-        DataSetIterator iterator = new RecordReaderDataSetIterator(crr,transformed.size(),9,2);
-        DataSet dataSet = iterator.next();
-        dataSet.shuffle();
+        DataSetIterator iter = new RecordReaderDataSetIterator(crr,transformed.size(),8,9,true);
+        DataSet dataSet = iter.next();
+        dataSet.shuffle(seed);
         /*
          * Step 5: Do train and test splitting
          */
-        SplitTestAndTrain testAndTrain = dataSet.splitTestAndTrain(0.8);
+        SplitTestAndTrain testAndTrain = dataSet.splitTestAndTrain(trainFraction);
         DataSet trainSet = testAndTrain.getTrain();
         DataSet testSet = testAndTrain.getTest();
 
@@ -163,8 +164,11 @@ public class EnergyEfficiency {
 
         DataNormalization scaler = new NormalizerMinMaxScaler();
         scaler.fit(trainIter);
-        trainIter.setPreProcessor(scaler);
-        testIter.setPreProcessor(scaler);
+        scaler.transform(trainSet);
+        scaler.transform(testSet);
+
+//        trainIter.setPreProcessor(scaler);
+//        testIter.setPreProcessor(scaler);
 
         MultiLayerConfiguration config = new NeuralNetConfiguration.Builder()
                 .seed(seed)
@@ -178,7 +182,7 @@ public class EnergyEfficiency {
                         .build())
                 .layer(new OutputLayer.Builder(LossFunctions.LossFunction.MSE)
                         .nOut(2)
-                        .activation(Activation.IDENTITY)
+                        .activation(Activation.SIGMOID)
                         .build())
                 .build();
 
@@ -216,15 +220,16 @@ public class EnergyEfficiency {
         //Set the number of epoch using the best results from the first Early Stopping training to retrain the model
         //result.getBestModelEpoch() - the optimal epoch number
         System.out.println("Training model ...");
+        System.out.println("Best epoch is ..." + result.getBestModelEpoch());
 
         Evaluation eval;
         Evaluation eval2;
-        for(int i = 1; i <= 100; i++) {
-            trainIter.reset();
+        for(int i = 1; i < result.getBestModelEpoch(); i++) {
+//            trainIter.reset();
             model.fit(trainIter);
-            eval2 = model.evaluate(trainIter);
+//            eval2 = model.evaluate(trainIter);
             eval = model.evaluate(testIter);
-            System.out.println("EPOCH: " + i + " Train Accuracy "+ eval2.accuracy() +" Validation Accuracy: " + eval.accuracy());
+            System.out.println("EPOCH: " + i + " Accuracy: " + eval.accuracy());
         }
 
         Evaluation evalTrain = model.evaluate(trainIter);
